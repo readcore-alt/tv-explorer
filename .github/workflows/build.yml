@@ -19,7 +19,73 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Instalar y Configurar Gradle 8.5 (Sin caché caído)
+    - name: Auto-organizar carpetas de Android (Sin mover nada a mano)
+      run: |
+        mkdir -p app/src/main/java/com/example/tvexplorer
+        mv *.java app/src/main/java/com/example/tvexplorer/
+        mv AndroidManifest.xml app/src/main/
+        mv res app/src/main/
+
+        # Generar settings.gradle estándar
+        cat << 'EOF' > settings.gradle
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = "tv-explorer"
+        include ':app'
+        EOF
+
+        # Generar build.gradle raíz
+        cat << 'EOF' > build.gradle
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:8.2.2'
+            }
+        }
+        EOF
+
+        # Generar app/build.gradle con NanoHTTPD
+        cat << 'EOF' > app/build.gradle
+        plugins {
+            id 'com.android.application'
+        }
+        android {
+            namespace 'com.example.tvexplorer'
+            compileSdk 34
+            defaultConfig {
+                applicationId "com.example.tvexplorer"
+                minSdk 26
+                targetSdk 34
+                versionCode 1
+                versionName "1.0"
+            }
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+        }
+        dependencies {
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+            implementation 'org.nanohttpd:nanohttpd:2.3.1'
+        }
+        EOF
+
+    - name: Instalar y Configurar Gradle 8.5
       uses: gradle/actions/setup-gradle@v3
       with:
         gradle-version: '8.5'
