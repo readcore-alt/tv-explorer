@@ -3,54 +3,75 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#121212"
-    android:gravity="center"
     android:orientation="vertical"
-    android:padding="32dp">
+    android:padding="20dp">
 
-    <!-- Título principal -->
-    <TextView
-        android:layout_width="wrap_content"
+    <!-- BARRA SUPERIOR: Servidor e IP -->
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="📺 TV Explorer &amp; Transfer"
-        android:textColor="#FFFFFF"
-        android:textSize="32sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="24dp" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:background="#1E1E1E"
+        android:padding="14dp"
+        android:layout_marginBottom="12dp">
 
-    <!-- Estado del servidor -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="SERVIDOR: APAGADO"
+                android:textColor="#F44336"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvIpAddress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Presiona el botón para recibir archivos desde tu PC"
+                android:textColor="#AAAAAA"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/btnToggleServer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:backgroundTint="#2196F3"
+            android:focusable="true"
+            android:text="INICIAR SERVIDOR"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- RUTA ACTUAL -->
     <TextView
-        android:id="@+id/tvStatus"
-        android:layout_width="wrap_content"
+        android:id="@+id/tvCurrentPath"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="ESTADO: APAGADO"
-        android:textColor="#F44336"
-        android:textSize="20sp"
+        android:text="/storage/emulated/0"
+        android:textColor="#4CAF50"
+        android:textSize="14sp"
         android:textStyle="bold"
-        android:layout_marginBottom="16dp" />
+        android:padding="6dp" />
 
-    <!-- Dirección IP para entrar desde la PC -->
-    <TextView
-        android:id="@+id/tvIpAddress"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:text="Presiona el botón para activar"
-        android:textColor="#BBBBBB"
-        android:textSize="22sp"
-        android:lineSpacingExtra="6dp"
-        android:layout_marginBottom="36dp" />
-
-    <!-- Botón con foco para el control remoto (D-Pad) -->
-    <Button
-        android:id="@+id/btnToggleServer"
-        android:layout_width="320dp"
-        android:layout_height="64dp"
-        android:backgroundTint="#2196F3"
-        android:text="INICIAR SERVIDOR"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:focusable="true"
-        android:clickable="true" />
+    <!-- LISTA DE ARCHIVOS Y CARPETAS -->
+    <ListView
+        android:id="@+id/lvFiles"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:choiceMode="singleChoice"
+        android:divider="#2A2A2A"
+        android:dividerHeight="1dp"
+        android:focusable="true" />
 
 </LinearLayout>
