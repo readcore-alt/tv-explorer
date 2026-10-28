@@ -19,14 +19,17 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Auto-organizar carpetas de Android (Sin mover nada a mano)
+    - name: Auto-organizar carpetas y configurar AndroidX
       run: |
         mkdir -p app/src/main/java/com/example/tvexplorer
         mv *.java app/src/main/java/com/example/tvexplorer/
         mv AndroidManifest.xml app/src/main/
         mv res app/src/main/
 
-        # Generar settings.gradle estándar
+        # Activar AndroidX obligatorio
+        echo "android.useAndroidX=true" > gradle.properties
+
+        # Generar settings.gradle
         cat << 'EOF' > settings.gradle
         pluginManagement {
             repositories {
