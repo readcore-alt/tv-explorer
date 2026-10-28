@@ -4,17 +4,17 @@
     android:layout_height="match_parent"
     android:background="#121212"
     android:orientation="vertical"
-    android:padding="20dp">
+    android:padding="16dp">
 
-    <!-- BARRA SUPERIOR: Servidor e IP -->
+    <!-- BARRA SUPERIOR: Servidor + Botón Ajustes -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:background="#1E1E1E"
-        android:padding="14dp"
-        android:layout_marginBottom="12dp">
+        android:padding="12dp"
+        android:layout_marginBottom="10dp">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -28,16 +28,16 @@
                 android:layout_height="wrap_content"
                 android:text="SERVIDOR: APAGADO"
                 android:textColor="#F44336"
-                android:textSize="16sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tvIpAddress"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Presiona el botón para recibir archivos desde tu PC"
+                android:text="Presiona INICIAR para recibir archivos de PC"
                 android:textColor="#AAAAAA"
-                android:textSize="14sp" />
+                android:textSize="13sp" />
         </LinearLayout>
 
         <Button
@@ -46,32 +46,102 @@
             android:layout_height="wrap_content"
             android:backgroundTint="#2196F3"
             android:focusable="true"
-            android:text="INICIAR SERVIDOR"
+            android:text="INICIAR"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/btnSettings"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:backgroundTint="#333333"
+            android:focusable="true"
+            android:text="⚙️ AJUSTES"
+            android:textColor="#FFFFFF" />
     </LinearLayout>
 
-    <!-- RUTA ACTUAL -->
     <TextView
         android:id="@+id/tvCurrentPath"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="/storage/emulated/0"
+        android:text="📁 /storage/emulated/0"
         android:textColor="#4CAF50"
-        android:textSize="14sp"
+        android:textSize="13sp"
         android:textStyle="bold"
-        android:padding="6dp" />
+        android:paddingBottom="6dp" />
 
-    <!-- LISTA DE ARCHIVOS Y CARPETAS -->
-    <ListView
-        android:id="@+id/lvFiles"
+    <!-- CUERPO PRINCIPAL DIVIDIDO EN 2 (16:9 TV) -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:choiceMode="singleChoice"
-        android:divider="#2A2A2A"
-        android:dividerHeight="1dp"
-        android:focusable="true" />
+        android:orientation="horizontal">
+
+        <!-- LADO IZQUIERDO: Lista de archivos -->
+        <ListView
+            android:id="@+id/lvFiles"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="6"
+            android:choiceMode="singleChoice"
+            android:divider="#252525"
+            android:dividerHeight="1dp"
+            android:focusable="true" />
+
+        <!-- LADO DERECHO: Panel de Previsualización y Detalles -->
+        <LinearLayout
+            android:id="@+id/panelPreview"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="4"
+            android:background="#181818"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:layout_marginStart="12dp">
+
+            <!-- Imagen / Miniatura -->
+            <ImageView
+                android:id="@+id/ivPreview"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:scaleType="fitCenter"
+                android:src="@android:drawable/ic_menu_gallery"
+                android:layout_marginBottom="12dp" />
+
+            <!-- Nombre de archivo -->
+            <TextView
+                android:id="@+id/tvPreviewName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Selecciona un archivo"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Detalles (Peso, Fecha) -->
+            <TextView
+                android:id="@+id/tvPreviewDetails"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="-- MB"
+                android:textColor="#888888"
+                android:textSize="13sp"
+                android:gravity="center" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="[OK] Abrir  |  [Mantener OK] Borrar"
+                android:textColor="#2196F3"
+                android:textSize="12sp"
+                android:gravity="center"
+                android:layout_marginTop="20dp" />
+        </LinearLayout>
+
+    </LinearLayout>
 
 </LinearLayout>
