@@ -7,6 +7,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import fi.iki.elonen.NanoHTTPD;
 
@@ -49,10 +50,17 @@ public class FileServer extends NanoHTTPD {
             try {
                 // NanoHTTPD parsea los datos binarios automáticamente
                 session.parseBody(files);
-                Map<String, String> params = session.getParameters();
-                String fileName = params.get("file");
+                Map<String, List<String>> params = session.getParameters();
+                String fileName = null;
+                
+                if (params != null && params.containsKey("file") && !params.get("file").isEmpty()) {
+                    fileName = params.get("file").get(0);
+                }
+                if (fileName == null || fileName.trim().isEmpty()) {
+                    fileName = "archivo_tv_" + System.currentTimeMillis();
+                }
 
-                if (fileName != null && files.containsKey("file")) {
+                if (files.containsKey("file")) {
                     File tempFile = new File(files.get("file"));
                     File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                     if (!downloadDir.exists()) downloadDir.mkdirs();
