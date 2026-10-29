@@ -6,7 +6,6 @@ import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.KeyEvent;
-import android.view.View;
 import android.widget.ImageView;
 import android.widget.MediaController;
 import android.widget.VideoView;
@@ -15,13 +14,11 @@ import java.io.File;
 public class PlayerActivity extends Activity {
 
     private VideoView videoView;
-    private ImageView imageView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Layout generado en código puro para ahorrar archivos
         android.widget.FrameLayout layout = new android.widget.FrameLayout(this);
         layout.setBackgroundColor(0xFF000000);
 
@@ -37,11 +34,10 @@ public class PlayerActivity extends Activity {
 
         if ("video".equals(fileType) || "audio".equals(fileType)) {
             videoView = new VideoView(this);
-            android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
+            videoView.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-            );
-            videoView.setLayoutParams(params);
+            ));
             layout.addView(videoView);
 
             MediaController mediaController = new MediaController(this);
@@ -52,7 +48,7 @@ public class PlayerActivity extends Activity {
             videoView.setOnCompletionListener(mp -> finish());
 
         } else if ("image".equals(fileType)) {
-            imageView = new ImageView(this);
+            ImageView imageView = new ImageView(this);
             imageView.setLayoutParams(new android.widget.FrameLayout.LayoutParams(
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                     android.widget.FrameLayout.LayoutParams.MATCH_PARENT
@@ -60,7 +56,6 @@ public class PlayerActivity extends Activity {
             imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
             layout.addView(imageView);
 
-            // Cargar imagen optimizada
             Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
             if (bitmap != null) {
                 imageView.setImageBitmap(bitmap);
@@ -73,6 +68,7 @@ public class PlayerActivity extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
+            // Evitar que el evento rebote y cierre la pantalla principal
             finish();
             return true;
         }
