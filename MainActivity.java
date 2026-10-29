@@ -15,12 +15,14 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.provider.Settings;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
+import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -46,12 +48,11 @@ public class MainActivity extends AppCompatActivity {
 
     private File currentDir;
     private List<File> currentFiles = new ArrayList<>();
-    private ArrayAdapter<String> fileAdapter;
-    private List<String> fileNames = new ArrayList<>();
+    private FileAdapter fileAdapter;
 
     private SharedPreferences prefs;
     private Bitmap currentPreviewBitmap = null;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -91,20 +92,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupExplorer() {
-        fileAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, fileNames) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View view = super.getView(position, convertView, parent);
-                TextView tv = view.findViewById(android.R.id.text1);
-                tv.setTextColor(0xFFEEEEEE);
-                tv.setTextSize(15);
-                tv.setPadding(12, 10, 12, 10);
-                return view;
-            }
-        };
+        fileAdapter = new FileAdapter();
         lvFiles.setAdapter(fileAdapter);
 
-        // Al moverte con las flechas del control (Focus): genera preview único
+        // Al mover el cursor del control remoto: actualiza el panel derecho
         lvFiles.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
@@ -116,7 +107,7 @@ public class MainActivity extends AppCompatActivity {
             public void onNothingSelected(android.widget.AdapterView<?> parent) {}
         });
 
-        // Pulsar OK para abrir
+        // Pulsar OK para abrir carpeta o archivo
         lvFiles.setOnItemClickListener((parent, view, position, id) -> {
             if (position < currentFiles.size()) {
                 File selected = currentFiles.get(position);
@@ -148,7 +139,96 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // Actualiza la miniatura en tiempo real para el archivo enfocado (0 MB acumulación de RAM)
+    // Adaptador personalizado: crea un icono/miniatura a la izquierda + texto
+    private class FileAdapter extends BaseAdapter {
+
+        @Override
+        public int getCount() { return currentFiles.size(); }
+        @Override
+        public Object getItem(int position) { return currentFiles.get(position); }
+        @Override
+        public long getItemId(int position) { return position; }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            LinearLayout row;
+            ImageView ivIcon;
+            TextView tvName;
+
+            if (convertView == null) {
+                row = new LinearLayout(MainActivity.this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(14, 10, 14, 10);
+
+                ivIcon = new ImageView(MainActivity.this);
+                int size = dpToPx(38);
+                LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(size, size);
+                iconParams.setMarginEnd(dpToPx(12));
+                ivIcon.setLayoutParams(iconParams);
+                ivIcon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                row.addView(ivIcon);
+
+                tvName = new TextView(MainActivity.this);
+                tvName.setTextColor(0xFFEEEEEE);
+                tvName.setTextSize(15);
+                tvName.setSingleLine(true);
+                tvName.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+                row.addView(tvName);
+            } else {
+                row = (LinearLayout) convertView;
+                ivIcon = (ImageView) row.getChildAt(0);
+                tvName = (TextView) row.getChildAt(1);
+            }
+
+            File file = currentFiles.get(position);
+            String name = file.getName();
+            tvName.setText(name);
+
+            boolean fullThumbs = prefs.getBoolean("full_thumbnails", false);
+            String path = file.getAbsolutePath();
+            ivIcon.setTag(path);
+
+            if (file.isDirectory()) {
+                ivIcon.setImageResource(android.R.drawable.ic_menu_agenda);
+            } else if (isApk(name.toLowerCase())) {
+                ivIcon.setImageResource(android.R.drawable.ic_menu_set_as);
+            } else if (isAudio(name.toLowerCase())) {
+                ivIcon.setImageResource(android.R.drawable.ic_lock_silent_mode_off);
+            } else if (isImage(name.toLowerCase()) || isVideo(name.toLowerCase())) {
+                if (fullThumbs) {
+                    // MODO VISUAL: Carga miniaturas reales al lado del nombre (Estilo Cx)
+                    ivIcon.setImageResource(android.R.drawable.ic_menu_gallery);
+                    executor.execute(() -> {
+                        Bitmap thumb;
+                        if (isImage(name.toLowerCase())) {
+                            thumb = decodeSampledBitmap(file, 80, 80);
+                        } else {
+                            thumb = ThumbnailUtils.createVideoThumbnail(file.getAbsolutePath(), MediaStore.Images.Thumbnails.MICRO_KIND);
+                        }
+                        mainHandler.post(() -> {
+                            if (path.equals(ivIcon.getTag()) && thumb != null) {
+                                ivIcon.setImageBitmap(thumb);
+                            }
+                        });
+                    });
+                } else {
+                    // MODO ULTRA AHORRO: Icono estático veloz (0 MB RAM)
+                    ivIcon.setImageResource(isVideo(name.toLowerCase()) ? android.R.drawable.ic_media_play : android.R.drawable.ic_menu_gallery);
+                }
+            } else {
+                ivIcon.setImageResource(android.R.drawable.ic_menu_save);
+            }
+
+            return row;
+        }
+    }
+
+    private int dpToPx(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    // Panel lateral derecho: Vista previa individual en tamaño grande
     private void updatePreviewPanel(File file) {
         tvPreviewName.setText(file.getName());
         String dateStr = new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(new Date(file.lastModified()));
@@ -165,7 +245,7 @@ public class MainActivity extends AppCompatActivity {
 
         String name = file.getName().toLowerCase();
 
-        // Liberar la memoria RAM de la miniatura anterior antes de cargar la nueva
+        // Liberar la memoria RAM de la miniatura previa
         if (currentPreviewBitmap != null && !currentPreviewBitmap.isRecycled()) {
             currentPreviewBitmap.recycle();
             currentPreviewBitmap = null;
@@ -173,7 +253,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (isImage(name)) {
             executor.execute(() -> {
-                Bitmap bmp = decodeSampledBitmap(file, 300, 300);
+                Bitmap bmp = decodeSampledBitmap(file, 350, 350);
                 mainHandler.post(() -> {
                     if (bmp != null) {
                         currentPreviewBitmap = bmp;
@@ -232,16 +312,20 @@ public class MainActivity extends AppCompatActivity {
 
     private void showSettingsDialog() {
         boolean fullThumbs = prefs.getBoolean("full_thumbnails", false);
-        String[] options = {"Modo Rendimiento: Ultra Ahorro (Recomendado)", "Modo Visual: Miniaturas simultáneas en lista"};
+        String[] options = {
+            "⚡ Modo Rendimiento (Lista instantánea + Vista previa derecha)",
+            "🖼️ Modo Visual (Miniaturas directas en la lista al estilo Cx)"
+        };
         int checkedItem = fullThumbs ? 1 : 0;
 
         new AlertDialog.Builder(this)
                 .setTitle("⚙️ Ajustes de Exploración")
                 .setSingleChoiceItems(options, checkedItem, (dialog, which) -> {
-                    prefs.edit().putBoolean("full_thumbnails", which == 1).apply();
-                    Toast.makeText(this, which == 1 ? "Modo visual activado" : "Ultra Ahorro activado", Toast.LENGTH_SHORT).show();
+                    boolean enableVisual = (which == 1);
+                    prefs.edit().putBoolean("full_thumbnails", enableVisual).apply();
+                    Toast.makeText(this, enableVisual ? "Modo Visual activado" : "Modo Rendimiento activado", Toast.LENGTH_SHORT).show();
                     dialog.dismiss();
-                    loadFiles(currentDir);
+                    fileAdapter.notifyDataSetChanged();
                 })
                 .setNegativeButton("Cerrar", null)
                 .show();
@@ -254,7 +338,6 @@ public class MainActivity extends AppCompatActivity {
 
         File[] files = currentDir.listFiles();
         currentFiles.clear();
-        fileNames.clear();
 
         if (files != null) {
             List<File> dirList = new ArrayList<>();
@@ -271,23 +354,6 @@ public class MainActivity extends AppCompatActivity {
 
             currentFiles.addAll(dirList);
             currentFiles.addAll(fileList);
-
-            for (File f : currentFiles) {
-                String name = f.getName();
-                if (f.isDirectory()) {
-                    fileNames.add("📁  " + name);
-                } else if (isApk(name)) {
-                    fileNames.add("📦  " + name);
-                } else if (isVideo(name)) {
-                    fileNames.add("🎬  " + name);
-                } else if (isImage(name)) {
-                    fileNames.add("🖼️  " + name);
-                } else if (isAudio(name)) {
-                    fileNames.add("🎵  " + name);
-                } else {
-                    fileNames.add("📄  " + name);
-                }
-            }
         }
         fileAdapter.notifyDataSetChanged();
         if (!currentFiles.isEmpty()) {
@@ -339,7 +405,7 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
-    // SOPORTE COMPLETO .jfif AGREGADO AQUÍ
+    // Compatible con .jfif
     private boolean isImage(String n) { 
         return n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png") || n.endsWith(".webp") || n.endsWith(".jfif"); 
     }
