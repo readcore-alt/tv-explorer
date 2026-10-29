@@ -81,7 +81,7 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
         btnSettings = findViewById(R.id.btnSettings);
         lvFiles = findViewById(R.id.lvFiles);
 
-        FileServer.listener = this; // Conectar receptor de progreso
+        FileServer.listener = this;
 
         checkStoragePermission();
 
@@ -106,59 +106,30 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
         }
     }
 
-    // --- RECEPCIÓN EN TIEMPO REAL DESDE LA PC ---
+    // AVISO EN PANTALLA EN TIEMPO REAL AL RECIBIR UN ARCHIVO
     @Override
-    public void onTransferStart(String fileName, int fileIndex, int totalFiles) {
+    public void onFileReceived(String fileName, int index, int total) {
         mainHandler.post(() -> {
-            tvStatus.setText("📥 RECIBIENDO (" + fileIndex + "/" + totalFiles + ")");
-            tvStatus.setTextColor(0xFF2196F3);
-            tvTransferDetail.setVisibility(View.VISIBLE);
-            tvTransferDetail.setText(fileName);
-            pbTransfer.setVisibility(View.VISIBLE);
-            pbTransfer.setProgress(0);
-        });
-    }
-
-    @Override
-    public void onTransferProgress(String fileName, int percent, float speedMBs, long bytesRead, long totalBytes) {
-        mainHandler.post(() -> {
-            pbTransfer.setProgress(percent);
-            float currentMB = bytesRead / (1024f * 1024f);
-            float totalMB = totalBytes / (1024f * 1024f);
-            String info = String.format(Locale.getDefault(), "%s • %d%% (%.1f MB/s) • %.1f/%.1f MB", fileName, percent, speedMBs, currentMB, totalMB);
-            tvTransferDetail.setText(info);
-        });
-    }
-
-    @Override
-    public void onTransferComplete(String fileName) {
-        mainHandler.post(() -> {
-            tvStatus.setText("✅ ARCHIVO RECIBIDO");
+            tvStatus.setText("📥 RECIBIDO (" + index + "/" + total + ")");
             tvStatus.setTextColor(0xFF4CAF50);
+            tvTransferDetail.setVisibility(View.VISIBLE);
             tvTransferDetail.setText("Guardado en /Download: " + fileName);
-            pbTransfer.setProgress(100);
+            pbTransfer.setVisibility(View.VISIBLE);
+            pbTransfer.setProgress(Math.round(((float) index / total) * 100));
 
-            // AUTO-REFRESCAR LA LISTA DE ARCHIVOS DE LA TELE
+            // Refrescar lista de inmediato
             if (currentDir != null) {
                 loadFiles(currentDir);
             }
 
-            // Ocultar barra tras 3 segundos y volver al estado normal
-            mainHandler.postDelayed(() -> {
-                pbTransfer.setVisibility(View.GONE);
-                tvTransferDetail.setVisibility(View.GONE);
-                updateUI();
-            }, 3000);
-        });
-    }
-
-    @Override
-    public void onTransferError(String error) {
-        mainHandler.post(() -> {
-            tvStatus.setText("❌ ERROR DE TRANSFERENCIA");
-            tvStatus.setTextColor(0xFFF44336);
-            tvTransferDetail.setText(error);
-            pbTransfer.setVisibility(View.GONE);
+            // Ocultar barra 3 segundos después del último archivo
+            if (index == total) {
+                mainHandler.postDelayed(() -> {
+                    pbTransfer.setVisibility(View.GONE);
+                    tvTransferDetail.setVisibility(View.GONE);
+                    updateUI();
+                }, 3500);
+            }
         });
     }
 
