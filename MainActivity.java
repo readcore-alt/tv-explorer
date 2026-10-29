@@ -43,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvStatus, tvIpAddress, tvCurrentPath;
     private TextView tvPreviewName, tvPreviewDetails;
     private ImageView ivPreview;
+    private LinearLayout panelPreview;
     private Button btnToggleServer, btnSettings;
     private ListView lvFiles;
 
@@ -54,6 +55,8 @@ public class MainActivity extends AppCompatActivity {
     private Bitmap currentPreviewBitmap = null;
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    private long backPressedTime = 0; // Para evitar salir por accidente
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,6 +71,7 @@ public class MainActivity extends AppCompatActivity {
         tvPreviewName = findViewById(R.id.tvPreviewName);
         tvPreviewDetails = findViewById(R.id.tvPreviewDetails);
         ivPreview = findViewById(R.id.ivPreview);
+        panelPreview = findViewById(R.id.panelPreview);
         btnToggleServer = findViewById(R.id.btnToggleServer);
         btnSettings = findViewById(R.id.btnSettings);
         lvFiles = findViewById(R.id.lvFiles);
@@ -88,18 +92,23 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         updateUI();
+        applyPanelVisibility();
         loadFiles(currentDir);
+    }
+
+    private void applyPanelVisibility() {
+        boolean showPanel = prefs.getBoolean("show_preview_panel", true);
+        panelPreview.setVisibility(showPanel ? View.VISIBLE : View.GONE);
     }
 
     private void setupExplorer() {
         fileAdapter = new FileAdapter();
         lvFiles.setAdapter(fileAdapter);
 
-        // Al mover el cursor del control remoto: actualiza el panel derecho
         lvFiles.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                if (position < currentFiles.size()) {
+                if (position < currentFiles.size() && panelPreview.getVisibility() == View.VISIBLE) {
                     updatePreviewPanel(currentFiles.get(position));
                 }
             }
@@ -107,7 +116,6 @@ public class MainActivity extends AppCompatActivity {
             public void onNothingSelected(android.widget.AdapterView<?> parent) {}
         });
 
-        // Pulsar OK para abrir carpeta o archivo
         lvFiles.setOnItemClickListener((parent, view, position, id) -> {
             if (position < currentFiles.size()) {
                 File selected = currentFiles.get(position);
@@ -119,7 +127,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Mantener presionado OK para borrar
         lvFiles.setOnItemLongClickListener((parent, view, position, id) -> {
             if (position < currentFiles.size()) {
                 File selected = currentFiles.get(position);
@@ -139,6 +146,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // Fila con dos líneas de texto: Nombre arriba + Peso y Fecha abajo
     private class FileAdapter extends BaseAdapter {
 
         @Override
@@ -152,13 +160,13 @@ public class MainActivity extends AppCompatActivity {
         public View getView(int position, View convertView, ViewGroup parent) {
             LinearLayout row;
             ImageView ivIcon;
-            TextView tvName;
+            TextView tvName, tvSubtext;
 
             if (convertView == null) {
                 row = new LinearLayout(MainActivity.this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(14, 10, 14, 10);
+                row.setPadding(14, 8, 14, 8);
 
                 ivIcon = new ImageView(MainActivity.this);
                 int size = dpToPx(38);
@@ -168,21 +176,46 @@ public class MainActivity extends AppCompatActivity {
                 ivIcon.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 row.addView(ivIcon);
 
+                LinearLayout textCol = new LinearLayout(MainActivity.this);
+                textCol.setOrientation(LinearLayout.VERTICAL);
+                textCol.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
                 tvName = new TextView(MainActivity.this);
                 tvName.setTextColor(0xFFEEEEEE);
                 tvName.setTextSize(15);
                 tvName.setSingleLine(true);
-                tvName.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
-                row.addView(tvName);
+                textCol.addView(tvName);
+
+                tvSubtext = new TextView(MainActivity.this);
+                tvSubtext.setTextColor(0xFF888888);
+                tvSubtext.setTextSize(12);
+                tvSubtext.setSingleLine(true);
+                textCol.addView(tvSubtext);
+
+                row.addView(textCol);
             } else {
                 row = (LinearLayout) convertView;
                 ivIcon = (ImageView) row.getChildAt(0);
-                tvName = (TextView) row.getChildAt(1);
+                LinearLayout textCol = (LinearLayout) row.getChildAt(1);
+                tvName = (TextView) textCol.getChildAt(0);
+                tvSubtext = (TextView) textCol.getChildAt(1);
             }
 
             File file = currentFiles.get(position);
             String name = file.getName();
             tvName.setText(name);
+
+            // Subtexto directo en la lista (Peso y Fecha)
+            String dateStr = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(new Date(file.lastModified()));
+            if (file.isDirectory()) {
+                String[] ch = file.list();
+                int c = (ch != null) ? ch.length : 0;
+                tvSubtext.setText((c == 1 ? "1 elemento" : c + " elementos") + "  •  " + dateStr);
+            } else {
+                long sizeKB = file.length() / 1024;
+                String sizeText = (sizeKB > 1024) ? String.format(Locale.getDefault(), "%.2f MB", sizeKB / 1024.0) : sizeKB + " KB";
+                tvSubtext.setText(sizeText + "  •  " + dateStr);
+            }
 
             boolean fullThumbs = prefs.getBoolean("full_thumbnails", false);
             String path = file.getAbsolutePath();
@@ -225,24 +258,21 @@ public class MainActivity extends AppCompatActivity {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    // Panel de vista previa y detalles (Opción A)
     private void updatePreviewPanel(File file) {
         tvPreviewName.setText(file.getName());
         String dateStr = new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(new Date(file.lastModified()));
 
-        // SI ES CARPETA: Contar elementos superficiales (0 MB de RAM)
         if (file.isDirectory()) {
             String[] children = file.list();
             int count = (children != null) ? children.length : 0;
-            String itemsStr = (count == 1) ? "1 elemento" : count + " elementos";
-            tvPreviewDetails.setText(itemsStr + "  •  " + dateStr);
+            tvPreviewDetails.setText((count == 1 ? "1 elemento" : count + " elementos") + "\n" + dateStr);
             ivPreview.setImageResource(android.R.drawable.ic_menu_agenda);
             return;
         }
 
         long sizeKB = file.length() / 1024;
         String sizeText = (sizeKB > 1024) ? String.format(Locale.getDefault(), "%.2f MB", sizeKB / 1024.0) : sizeKB + " KB";
-        tvPreviewDetails.setText(sizeText + "  •  " + dateStr);
+        tvPreviewDetails.setText(sizeText + "\n" + dateStr);
 
         String name = file.getName().toLowerCase();
 
@@ -287,7 +317,6 @@ public class MainActivity extends AppCompatActivity {
             BitmapFactory.Options options = new BitmapFactory.Options();
             options.inJustDecodeBounds = true;
             BitmapFactory.decodeFile(file.getAbsolutePath(), options);
-
             options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight);
             options.inJustDecodeBounds = false;
             return BitmapFactory.decodeFile(file.getAbsolutePath(), options);
@@ -310,24 +339,67 @@ public class MainActivity extends AppCompatActivity {
         return inSampleSize;
     }
 
-    // Menú de ajustes limpio y profesional
+    // Diálogo de Ajustes completo: Miniaturas, Panel lateral y Ordenamiento
     private void showSettingsDialog() {
-        boolean fullThumbs = prefs.getBoolean("full_thumbnails", false);
-        String[] options = {
-            "Desactivado (Recomendado)",
-            "Activado"
+        String[] menuItems = {
+            "Mostrar miniaturas en la lista",
+            "Panel lateral de vista previa",
+            "Ordenar archivos"
         };
-        int checkedItem = fullThumbs ? 1 : 0;
 
         new AlertDialog.Builder(this)
-                .setTitle("Mostrar miniaturas en la lista")
-                .setSingleChoiceItems(options, checkedItem, (dialog, which) -> {
-                    boolean enableVisual = (which == 1);
-                    prefs.edit().putBoolean("full_thumbnails", enableVisual).apply();
-                    dialog.dismiss();
-                    fileAdapter.notifyDataSetChanged();
+                .setTitle("Configuración")
+                .setItems(menuItems, (dialog, which) -> {
+                    if (which == 0) toggleThumbnailsOption();
+                    else if (which == 1) togglePanelOption();
+                    else if (which == 2) showSortDialog();
                 })
                 .setNegativeButton("Cerrar", null)
+                .show();
+    }
+
+    private void toggleThumbnailsOption() {
+        boolean fullThumbs = prefs.getBoolean("full_thumbnails", false);
+        String[] opts = {"Desactivado (Recomendado)", "Activado"};
+        new AlertDialog.Builder(this)
+                .setTitle("Mostrar miniaturas en la lista")
+                .setSingleChoiceItems(opts, fullThumbs ? 1 : 0, (d, w) -> {
+                    prefs.edit().putBoolean("full_thumbnails", w == 1).apply();
+                    d.dismiss();
+                    fileAdapter.notifyDataSetChanged();
+                })
+                .show();
+    }
+
+    private void togglePanelOption() {
+        boolean showPanel = prefs.getBoolean("show_preview_panel", true);
+        String[] opts = {"Visible", "Oculto (Lista pantalla completa)"};
+        new AlertDialog.Builder(this)
+                .setTitle("Panel lateral de vista previa")
+                .setSingleChoiceItems(opts, showPanel ? 0 : 1, (d, w) -> {
+                    prefs.edit().putBoolean("show_preview_panel", w == 0).apply();
+                    d.dismiss();
+                    applyPanelVisibility();
+                })
+                .show();
+    }
+
+    private void showSortDialog() {
+        String[] sortOptions = {
+            "Nombre (A - Z)",
+            "Fecha (Más recientes primero)",
+            "Tamaño (Más grandes primero)",
+            "Tipo de archivo"
+        };
+        int currentSort = prefs.getInt("sort_mode", 0);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Ordenar archivos por:")
+                .setSingleChoiceItems(sortOptions, currentSort, (d, w) -> {
+                    prefs.edit().putInt("sort_mode", w).apply();
+                    d.dismiss();
+                    loadFiles(currentDir);
+                })
                 .show();
     }
 
@@ -349,16 +421,34 @@ public class MainActivity extends AppCompatActivity {
                 else fileList.add(f);
             }
 
-            Collections.sort(dirList, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
-            Collections.sort(fileList, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+            int sortMode = prefs.getInt("sort_mode", 0);
+            if (sortMode == 0) { // Nombre
+                Collections.sort(dirList, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+                Collections.sort(fileList, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+            } else if (sortMode == 1) { // Fecha (Más recientes primero)
+                Collections.sort(dirList, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+                Collections.sort(fileList, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+            } else if (sortMode == 2) { // Tamaño (Más grandes primero)
+                Collections.sort(dirList, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+                Collections.sort(fileList, (a, b) -> Long.compare(b.length(), a.length()));
+            } else if (sortMode == 3) { // Tipo de archivo
+                Collections.sort(dirList, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+                Collections.sort(fileList, (a, b) -> getFileExtension(a).compareToIgnoreCase(getFileExtension(b)));
+            }
 
             currentFiles.addAll(dirList);
             currentFiles.addAll(fileList);
         }
         fileAdapter.notifyDataSetChanged();
-        if (!currentFiles.isEmpty()) {
+        if (!currentFiles.isEmpty() && panelPreview.getVisibility() == View.VISIBLE) {
             updatePreviewPanel(currentFiles.get(0));
         }
+    }
+
+    private String getFileExtension(File f) {
+        String n = f.getName();
+        int idx = n.lastIndexOf('.');
+        return (idx > 0) ? n.substring(idx) : "";
     }
 
     private void openFile(File file) {
@@ -393,12 +483,24 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // CONTROL INTELIGENTE DEL BOTÓN ATRÁS (Evita expulsiones accidentales)
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             File parent = currentDir.getParentFile();
-            if (parent != null && parent.canRead() && !currentDir.getAbsolutePath().equals("/storage/emulated")) {
+            // Si está dentro de una subcarpeta, sube de nivel
+            if (parent != null && parent.canRead() && !currentDir.getAbsolutePath().equals("/storage/emulated/0") && !currentDir.getAbsolutePath().equals("/storage/emulated")) {
                 loadFiles(parent);
+                return true;
+            }
+
+            // Si está en la carpeta raíz, exige pulsar dos veces para salir
+            if (backPressedTime + 2000 > System.currentTimeMillis()) {
+                finish();
+                return true;
+            } else {
+                Toast.makeText(this, "Presiona Atrás otra vez para salir", Toast.LENGTH_SHORT).show();
+                backPressedTime = System.currentTimeMillis();
                 return true;
             }
         }
