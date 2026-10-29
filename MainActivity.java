@@ -124,8 +124,8 @@ public class MainActivity extends AppCompatActivity {
             if (position < currentFiles.size()) {
                 File selected = currentFiles.get(position);
                 new AlertDialog.Builder(this)
-                        .setTitle("¿Eliminar archivo?")
-                        .setMessage("¿Deseas borrar permanentemente:\n" + selected.getName() + "?")
+                        .setTitle("Eliminar")
+                        .setMessage("¿Deseas eliminar:\n" + selected.getName() + "?")
                         .setPositiveButton("Eliminar", (dialog, which) -> {
                             if (selected.delete()) {
                                 Toast.makeText(this, "Eliminado", Toast.LENGTH_SHORT).show();
@@ -139,7 +139,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // Adaptador personalizado: crea un icono/miniatura a la izquierda + texto
     private class FileAdapter extends BaseAdapter {
 
         @Override
@@ -197,7 +196,6 @@ public class MainActivity extends AppCompatActivity {
                 ivIcon.setImageResource(android.R.drawable.ic_lock_silent_mode_off);
             } else if (isImage(name.toLowerCase()) || isVideo(name.toLowerCase())) {
                 if (fullThumbs) {
-                    // MODO VISUAL: Carga miniaturas reales al lado del nombre (Estilo Cx)
                     ivIcon.setImageResource(android.R.drawable.ic_menu_gallery);
                     executor.execute(() -> {
                         Bitmap thumb;
@@ -213,7 +211,6 @@ public class MainActivity extends AppCompatActivity {
                         });
                     });
                 } else {
-                    // MODO ULTRA AHORRO: Icono estático veloz (0 MB RAM)
                     ivIcon.setImageResource(isVideo(name.toLowerCase()) ? android.R.drawable.ic_media_play : android.R.drawable.ic_menu_gallery);
                 }
             } else {
@@ -228,24 +225,27 @@ public class MainActivity extends AppCompatActivity {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    // Panel lateral derecho: Vista previa individual en tamaño grande
+    // Panel de vista previa y detalles (Opción A)
     private void updatePreviewPanel(File file) {
         tvPreviewName.setText(file.getName());
         String dateStr = new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(new Date(file.lastModified()));
 
+        // SI ES CARPETA: Contar elementos superficiales (0 MB de RAM)
         if (file.isDirectory()) {
-            tvPreviewDetails.setText("Carpeta\n" + dateStr);
+            String[] children = file.list();
+            int count = (children != null) ? children.length : 0;
+            String itemsStr = (count == 1) ? "1 elemento" : count + " elementos";
+            tvPreviewDetails.setText(itemsStr + "  •  " + dateStr);
             ivPreview.setImageResource(android.R.drawable.ic_menu_agenda);
             return;
         }
 
         long sizeKB = file.length() / 1024;
         String sizeText = (sizeKB > 1024) ? String.format(Locale.getDefault(), "%.2f MB", sizeKB / 1024.0) : sizeKB + " KB";
-        tvPreviewDetails.setText(sizeText + "\n" + dateStr);
+        tvPreviewDetails.setText(sizeText + "  •  " + dateStr);
 
         String name = file.getName().toLowerCase();
 
-        // Liberar la memoria RAM de la miniatura previa
         if (currentPreviewBitmap != null && !currentPreviewBitmap.isRecycled()) {
             currentPreviewBitmap.recycle();
             currentPreviewBitmap = null;
@@ -310,20 +310,20 @@ public class MainActivity extends AppCompatActivity {
         return inSampleSize;
     }
 
+    // Menú de ajustes limpio y profesional
     private void showSettingsDialog() {
         boolean fullThumbs = prefs.getBoolean("full_thumbnails", false);
         String[] options = {
-            "⚡ Modo Rendimiento (Lista instantánea + Vista previa derecha)",
-            "🖼️ Modo Visual (Miniaturas directas en la lista al estilo Cx)"
+            "Desactivado (Recomendado)",
+            "Activado"
         };
         int checkedItem = fullThumbs ? 1 : 0;
 
         new AlertDialog.Builder(this)
-                .setTitle("⚙️ Ajustes de Exploración")
+                .setTitle("Mostrar miniaturas en la lista")
                 .setSingleChoiceItems(options, checkedItem, (dialog, which) -> {
                     boolean enableVisual = (which == 1);
                     prefs.edit().putBoolean("full_thumbnails", enableVisual).apply();
-                    Toast.makeText(this, enableVisual ? "Modo Visual activado" : "Modo Rendimiento activado", Toast.LENGTH_SHORT).show();
                     dialog.dismiss();
                     fileAdapter.notifyDataSetChanged();
                 })
@@ -405,7 +405,6 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
-    // Compatible con .jfif
     private boolean isImage(String n) { 
         return n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png") || n.endsWith(".webp") || n.endsWith(".jfif"); 
     }
