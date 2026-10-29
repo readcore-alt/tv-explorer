@@ -2,16 +2,22 @@ package com.example.tvexplorer;
 
 import android.os.Environment;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.HashMap;
-import java.util.List;
+import java.net.URLDecoder;
 import java.util.Map;
 import fi.iki.elonen.NanoHTTPD;
 
 public class FileServer extends NanoHTTPD {
+
+    public interface TransferListener {
+        void onTransferStart(String fileName, int fileIndex, int totalFiles);
+        void onTransferProgress(String fileName, int percent, float speedMBs, long bytesRead, long totalBytes);
+        void onTransferComplete(String fileName);
+        void onTransferError(String error);
+    }
+
+    public static TransferListener listener = null;
 
     public FileServer(int port) {
         super(port);
@@ -20,77 +26,154 @@ public class FileServer extends NanoHTTPD {
     @Override
     public Response serve(IHTTPSession session) {
         Method method = session.getMethod();
+        String uri = session.getUri();
 
-        // Si la PC abre la web (GET), le mandamos la página con el botón de subir
+        // 1. PÁGINA WEB PARA LA COMPUTADORA (Drag & Drop + Barra de progreso)
         if (Method.GET.equals(method)) {
-            String html = "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            String html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'>"
                     + "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-                    + "<title>TV File Transfer</title>"
+                    + "<title>TV Explorer Transfer</title>"
                     + "<style>"
-                    + "body{background:#121212;color:#eee;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;}"
-                    + ".card{background:#1e1e1e;padding:30px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.5);text-align:center;max-width:400px;width:90%;}"
-                    + "h2{margin-top:0;color:#4CAF50;}"
-                    + "input[type=file]{margin:20px 0;width:100%;color:#aaa;}"
-                    + "button{background:#4CAF50;color:#fff;border:none;padding:12px 24px;font-size:16px;border-radius:6px;cursor:pointer;width:100%;}"
-                    + "button:hover{background:#45a049;}"
+                    + "* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }"
+                    + "body { background: #0f0f12; color: #f0f0f0; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }"
+                    + ".card { background: #181920; border: 1px solid #282a36; border-radius: 16px; padding: 32px; max-width: 480px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.6); text-align: center; }"
+                    + "h2 { font-size: 24px; margin-bottom: 8px; color: #2196F3; display: flex; align-items: center; justify-content: center; gap: 8px; }"
+                    + "p { color: #888; font-size: 14px; margin-bottom: 24px; }"
+                    + ".dropzone { border: 2px dashed #3d4255; border-radius: 12px; padding: 36px 20px; cursor: pointer; transition: 0.2s; background: #13141a; }"
+                    + ".dropzone:hover, .dropzone.dragover { border-color: #2196F3; background: #171b26; }"
+                    + ".dropzone svg { width: 48px; height: 48px; fill: #2196F3; margin-bottom: 12px; }"
+                    + ".dropzone span { display: block; font-size: 15px; color: #ccc; font-weight: 500; }"
+                    + ".dropzone small { display: block; color: #666; font-size: 12px; margin-top: 6px; }"
+                    + "#fileInput { display: none; }"
+                    + "#progressContainer { margin-top: 24px; display: none; text-align: left; }"
+                    + ".progress-header { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: #bbb; }"
+                    + ".progress-bar { width: 100%; height: 8px; background: #282a36; border-radius: 4px; overflow: hidden; }"
+                    + ".progress-fill { width: 0%; height: 100%; background: #4CAF50; transition: width 0.1s; }"
+                    + "#statusText { font-size: 12px; color: #888; margin-top: 6px; text-align: right; }"
                     + "</style></head><body>"
                     + "<div class='card'>"
-                    + "<h2>📺 TV File Transfer</h2>"
-                    + "<p>Selecciona un archivo (APK, video, foto) para enviarlo a la tele:</p>"
-                    + "<form method='post' enctype='multipart/form-data'>"
-                    + "<input type='file' name='file' required><br>"
-                    + "<button type='submit'>Enviar a la TV</button>"
-                    + "</form></div></body></html>";
+                    + "<h2>📺 TV Explorer</h2>"
+                    + "<p>Envía archivos, películas, fotos y APKs directo a la tele</p>"
+                    + "<div class='dropzone' id='dropzone'>"
+                    + "<svg viewBox='0 0 24 24'><path d='M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z'/></svg>"
+                    + "<span>Arrastra tus archivos aquí</span>"
+                    + "<small>o haz clic para seleccionar</small>"
+                    + "</div>"
+                    + "<input type='file' id='fileInput' multiple>"
+                    + "<div id='progressContainer'>"
+                    + "<div class='progress-header'><span id='fileName'>Subiendo...</span><span id='percentText'>0%</span></div>"
+                    + "<div class='progress-bar'><div class='progress-fill' id='progressFill'></div></div>"
+                    + "<div id='statusText'>Calculando velocidad...</div>"
+                    + "</div>"
+                    + "</div>"
+                    + "<script>"
+                    + "const dropzone = document.getElementById('dropzone');"
+                    + "const fileInput = document.getElementById('fileInput');"
+                    + "const progressContainer = document.getElementById('progressContainer');"
+                    + "const progressFill = document.getElementById('progressFill');"
+                    + "const percentText = document.getElementById('percentText');"
+                    + "const fileNameText = document.getElementById('fileName');"
+                    + "const statusText = document.getElementById('statusText');"
+                    + "dropzone.onclick = () => fileInput.click();"
+                    + "dropzone.ondragover = (e) => { e.preventDefault(); dropzone.classList.add('dragover'); };"
+                    + "dropzone.ondragleave = () => dropzone.classList.remove('dragover');"
+                    + "dropzone.ondrop = (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files); };"
+                    + "fileInput.onchange = () => { if (fileInput.files.length) uploadFiles(fileInput.files); };"
+                    + "async function uploadFiles(files) {"
+                    + "  progressContainer.style.display = 'block';"
+                    + "  for (let i = 0; i < files.length; i++) {"
+                    + "    await uploadSingleFile(files[i], i + 1, files.length);"
+                    + "  }"
+                    + "  fileNameText.innerText = '✅ ¡Todos los archivos enviados!';"
+                    + "  statusText.innerText = 'Guardados en /Download';"
+                    + "  progressFill.style.background = '#4CAF50';"
+                    + "}"
+                    + "function uploadSingleFile(file, index, total) {"
+                    + "  return new Promise((resolve, reject) => {"
+                    + "    const xhr = new XMLHttpRequest();"
+                    + "    fileNameText.innerText = `(${index}/${total}) ${file.name}`;"
+                    + "    let startTime = Date.now();"
+                    + "    xhr.upload.onprogress = (e) => {"
+                    + "      if (e.lengthComputable) {"
+                    + "        const percent = Math.round((e.loaded / e.total) * 100);"
+                    + "        progressFill.style.width = percent + '%';"
+                    + "        percentText.innerText = percent + '%';"
+                    + "        const elapsed = (Date.now() - startTime) / 1000;"
+                    + "        const speedMB = elapsed > 0 ? (e.loaded / (1024 * 1024 * elapsed)).toFixed(1) : 0;"
+                    + "        statusText.innerText = `${(e.loaded/(1024*1024)).toFixed(1)} MB / ${(e.total/(1024*1024)).toFixed(1)} MB (${speedMB} MB/s)`;"
+                    + "      }"
+                    + "    };"
+                    + "    xhr.onload = () => resolve();"
+                    + "    xhr.onerror = () => reject();"
+                    + "    xhr.open('POST', `/upload?filename=${encodeURIComponent(file.name)}&index=${index}&total=${total}`, true);"
+                    + "    xhr.send(file);"
+                    + "  });"
+                    + "}"
+                    + "</script></body></html>";
             return newFixedLengthResponse(Response.Status.OK, "text/html", html);
         }
 
-        // Si la PC mandó un archivo (POST)
-        if (Method.POST.equals(method)) {
-            Map<String, String> files = new HashMap<>();
+        // 2. RECEPCIÓN EN STREAMING PURO (0 MB DE RAM)
+        if (Method.POST.equals(method) && uri.startsWith("/upload")) {
             try {
-                // NanoHTTPD parsea los datos binarios automáticamente
-                session.parseBody(files);
-                Map<String, List<String>> params = session.getParameters();
-                String fileName = null;
-                
-                if (params != null && params.containsKey("file") && !params.get("file").isEmpty()) {
-                    fileName = params.get("file").get(0);
+                Map<String, String> params = session.getParms();
+                String rawName = params.get("filename");
+                String fileName = (rawName != null) ? URLDecoder.decode(rawName, "UTF-8") : "archivo_" + System.currentTimeMillis();
+                int fileIndex = params.containsKey("index") ? Integer.parseInt(params.get("index")) : 1;
+                int totalFiles = params.containsKey("total") ? Integer.parseInt(params.get("total")) : 1;
+
+                String contentLengthHeader = session.getHeaders().get("content-length");
+                long totalBytes = (contentLengthHeader != null) ? Long.parseLong(contentLengthHeader) : -1;
+
+                File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                if (!downloadDir.exists()) downloadDir.mkdirs();
+                File destFile = new File(downloadDir, fileName);
+
+                if (listener != null) {
+                    listener.onTransferStart(fileName, fileIndex, totalFiles);
                 }
-                if (fileName == null || fileName.trim().isEmpty()) {
-                    fileName = "archivo_tv_" + System.currentTimeMillis();
+
+                InputStream in = session.getInputStream();
+                FileOutputStream out = new FileOutputStream(destFile);
+                byte[] buf = new byte[64 * 1024]; // Buffer de 64 KB
+                long bytesRead = 0;
+                long startTime = System.currentTimeMillis();
+                long lastNotifyTime = 0;
+
+                while (totalBytes < 0 || bytesRead < totalBytes) {
+                    int toRead = (totalBytes > 0) ? (int) Math.min(buf.length, totalBytes - bytesRead) : buf.length;
+                    int len = in.read(buf, 0, toRead);
+                    if (len <= 0) break;
+                    out.write(buf, 0, len);
+                    bytesRead += len;
+
+                    long now = System.currentTimeMillis();
+                    // Notificar a la tele cada 200 ms para no saturar la pantalla
+                    if (now - lastNotifyTime > 200) {
+                        lastNotifyTime = now;
+                        float elapsedSec = (now - startTime) / 1000f;
+                        float speedMBs = (elapsedSec > 0) ? (bytesRead / (1024f * 1024f * elapsedSec)) : 0f;
+                        int percent = (totalBytes > 0) ? (int) ((bytesRead * 100) / totalBytes) : 0;
+                        if (listener != null) {
+                            listener.onTransferProgress(fileName, percent, speedMBs, bytesRead, totalBytes);
+                        }
+                    }
+                }
+                out.flush();
+                out.close();
+
+                if (listener != null) {
+                    listener.onTransferComplete(fileName);
                 }
 
-                if (files.containsKey("file")) {
-                    File tempFile = new File(files.get("file"));
-                    File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-                    if (!downloadDir.exists()) downloadDir.mkdirs();
+                return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK");
 
-                    File destFile = new File(downloadDir, fileName);
-
-                    // Copiar del archivo temporal al destino final
-                    copyFile(tempFile, destFile);
-
-                    return newFixedLengthResponse(Response.Status.OK, "text/html", 
-                            "<body style='background:#121212;color:#4CAF50;text-align:center;padding-top:50px;font-family:sans-serif;'>"
-                            + "<h2>✅ ¡Archivo recibido con éxito en la TV!</h2>"
-                            + "<p style='color:#ccc;'>Guardado en: /Download/" + fileName + "</p>"
-                            + "<br><a href='/' style='color:#2196F3;'>Subir otro archivo</a></body>");
-                }
             } catch (Exception e) {
-                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error al subir: " + e.getMessage());
+                if (listener != null) listener.onTransferError(e.getMessage());
+                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: " + e.getMessage());
             }
         }
 
         return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "No encontrado");
-    }
-
-    private void copyFile(File src, File dst) throws Exception {
-        try (InputStream in = new FileInputStream(src); OutputStream out = new FileOutputStream(dst)) {
-            byte[] buf = new byte[1024 * 64]; // Buffers de 64KB para transferencias rápidas
-            int len;
-            while ((len = in.read(buf)) > 0) {
-                out.write(buf, 0, len);
-            }
-        }
     }
 }
