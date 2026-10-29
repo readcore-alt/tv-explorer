@@ -25,6 +25,7 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -39,10 +40,12 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements FileServer.TransferListener {
 
     private TextView tvStatus, tvIpAddress, tvCurrentPath;
     private TextView tvPreviewName, tvPreviewDetails;
+    private TextView tvTransferDetail;
+    private ProgressBar pbTransfer;
     private ImageView ivPreview;
     private LinearLayout panelPreview;
     private Button btnToggleServer, btnSettings;
@@ -70,13 +73,16 @@ public class MainActivity extends AppCompatActivity {
         tvCurrentPath = findViewById(R.id.tvCurrentPath);
         tvPreviewName = findViewById(R.id.tvPreviewName);
         tvPreviewDetails = findViewById(R.id.tvPreviewDetails);
+        tvTransferDetail = findViewById(R.id.tvTransferDetail);
+        pbTransfer = findViewById(R.id.pbTransfer);
         ivPreview = findViewById(R.id.ivPreview);
         panelPreview = findViewById(R.id.panelPreview);
         btnToggleServer = findViewById(R.id.btnToggleServer);
         btnSettings = findViewById(R.id.btnSettings);
         lvFiles = findViewById(R.id.lvFiles);
 
-        // Permisos protegidos contra cierres
+        FileServer.listener = this; // Conectar receptor de progreso
+
         checkStoragePermission();
 
         btnToggleServer.setOnClickListener(v -> toggleServer());
@@ -92,11 +98,68 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        FileServer.listener = this;
         updateUI();
         applyPanelVisibility();
         if (currentDir != null) {
             loadFiles(currentDir);
         }
+    }
+
+    // --- RECEPCIÓN EN TIEMPO REAL DESDE LA PC ---
+    @Override
+    public void onTransferStart(String fileName, int fileIndex, int totalFiles) {
+        mainHandler.post(() -> {
+            tvStatus.setText("📥 RECIBIENDO (" + fileIndex + "/" + totalFiles + ")");
+            tvStatus.setTextColor(0xFF2196F3);
+            tvTransferDetail.setVisibility(View.VISIBLE);
+            tvTransferDetail.setText(fileName);
+            pbTransfer.setVisibility(View.VISIBLE);
+            pbTransfer.setProgress(0);
+        });
+    }
+
+    @Override
+    public void onTransferProgress(String fileName, int percent, float speedMBs, long bytesRead, long totalBytes) {
+        mainHandler.post(() -> {
+            pbTransfer.setProgress(percent);
+            float currentMB = bytesRead / (1024f * 1024f);
+            float totalMB = totalBytes / (1024f * 1024f);
+            String info = String.format(Locale.getDefault(), "%s • %d%% (%.1f MB/s) • %.1f/%.1f MB", fileName, percent, speedMBs, currentMB, totalMB);
+            tvTransferDetail.setText(info);
+        });
+    }
+
+    @Override
+    public void onTransferComplete(String fileName) {
+        mainHandler.post(() -> {
+            tvStatus.setText("✅ ARCHIVO RECIBIDO");
+            tvStatus.setTextColor(0xFF4CAF50);
+            tvTransferDetail.setText("Guardado en /Download: " + fileName);
+            pbTransfer.setProgress(100);
+
+            // AUTO-REFRESCAR LA LISTA DE ARCHIVOS DE LA TELE
+            if (currentDir != null) {
+                loadFiles(currentDir);
+            }
+
+            // Ocultar barra tras 3 segundos y volver al estado normal
+            mainHandler.postDelayed(() -> {
+                pbTransfer.setVisibility(View.GONE);
+                tvTransferDetail.setVisibility(View.GONE);
+                updateUI();
+            }, 3000);
+        });
+    }
+
+    @Override
+    public void onTransferError(String error) {
+        mainHandler.post(() -> {
+            tvStatus.setText("❌ ERROR DE TRANSFERENCIA");
+            tvStatus.setTextColor(0xFFF44336);
+            tvTransferDetail.setText(error);
+            pbTransfer.setVisibility(View.GONE);
+        });
     }
 
     private void applyPanelVisibility() {
@@ -108,7 +171,6 @@ public class MainActivity extends AppCompatActivity {
         fileAdapter = new FileAdapter();
         lvFiles.setAdapter(fileAdapter);
 
-        // Control estricto de posición (>= 0) para evitar IndexOutOfBoundsException
         lvFiles.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
@@ -151,7 +213,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private class FileAdapter extends BaseAdapter {
-
         @Override
         public int getCount() { return currentFiles.size(); }
         @Override
@@ -262,7 +323,6 @@ public class MainActivity extends AppCompatActivity {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    // Actualización segura sin recycle() manual
     private void updatePreviewPanel(File file) {
         if (file == null) return;
         tvPreviewName.setText(file.getName());
@@ -289,11 +349,8 @@ public class MainActivity extends AppCompatActivity {
                 Bitmap bmp = decodeSampledBitmap(file, 350, 350);
                 mainHandler.post(() -> {
                     if (path.equals(ivPreview.getTag())) {
-                        if (bmp != null) {
-                            ivPreview.setImageBitmap(bmp);
-                        } else {
-                            ivPreview.setImageResource(android.R.drawable.ic_menu_gallery);
-                        }
+                        if (bmp != null) ivPreview.setImageBitmap(bmp);
+                        else ivPreview.setImageResource(android.R.drawable.ic_menu_gallery);
                     }
                 });
             });
@@ -302,11 +359,8 @@ public class MainActivity extends AppCompatActivity {
                 Bitmap bmp = ThumbnailUtils.createVideoThumbnail(file.getAbsolutePath(), MediaStore.Images.Thumbnails.MINI_KIND);
                 mainHandler.post(() -> {
                     if (path.equals(ivPreview.getTag())) {
-                        if (bmp != null) {
-                            ivPreview.setImageBitmap(bmp);
-                        } else {
-                            ivPreview.setImageResource(android.R.drawable.ic_media_play);
-                        }
+                        if (bmp != null) ivPreview.setImageBitmap(bmp);
+                        else ivPreview.setImageResource(android.R.drawable.ic_media_play);
                     }
                 });
             });
@@ -444,7 +498,6 @@ public class MainActivity extends AppCompatActivity {
             combined.addAll(fileList);
         }
 
-        // Reemplazo atómico para evitar que getView lea una lista a medio borrar
         currentFiles = combined;
         fileAdapter.notifyDataSetChanged();
 
@@ -554,7 +607,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // Permisos totalmente blindados contra cuelgues
     private void checkStoragePermission() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -584,6 +636,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        FileServer.listener = null;
         executor.shutdown();
     }
 }
