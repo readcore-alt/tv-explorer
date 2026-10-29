@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URLDecoder;
 import java.util.HashMap;
 import java.util.Map;
 import fi.iki.elonen.NanoHTTPD;
@@ -26,7 +27,7 @@ public class FileServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         Method method = session.getMethod();
 
-        // 1. PÁGINA WEB MODERNA PARA LA PC (Drag & Drop + Medidor de MB/s real)
+        // 1. PÁGINA WEB INSTANTÁNEA (Sin retrasos)
         if (Method.GET.equals(method)) {
             String html = "<!DOCTYPE html><html lang='es'><head><meta charset='utf-8'>"
                     + "<meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -46,7 +47,7 @@ public class FileServer extends NanoHTTPD {
                     + "#progressContainer { margin-top: 24px; display: none; text-align: left; }"
                     + ".progress-header { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: #bbb; }"
                     + ".progress-bar { width: 100%; height: 8px; background: #282a36; border-radius: 4px; overflow: hidden; }"
-                    + ".progress-fill { width: 0%; height: 100%; background: #4CAF50; transition: width 0.15s ease-out; }"
+                    + ".progress-fill { width: 0%; height: 100%; background: #4CAF50; transition: width 0.1s ease-out; }"
                     + "#statusText { font-size: 12px; color: #888; margin-top: 6px; text-align: right; }"
                     + "</style></head><body>"
                     + "<div class='card'>"
@@ -105,7 +106,7 @@ public class FileServer extends NanoHTTPD {
                     + "    };"
                     + "    xhr.onload = () => resolve();"
                     + "    xhr.onerror = () => reject();"
-                    + "    xhr.open('POST', `/?index=${index}&total=${total}`, true);"
+                    + "    xhr.open('POST', `/?filename=${encodeURIComponent(file.name)}&index=${index}&total=${total}`, true);"
                     + "    xhr.send(formData);"
                     + "  });"
                     + "}"
@@ -113,30 +114,29 @@ public class FileServer extends NanoHTTPD {
             return newFixedLengthResponse(Response.Status.OK, "text/html", html);
         }
 
-        // 2. RECEPCIÓN NATIVA ULTRA RÁPIDA (parseBody nativo de NanoHTTPD)
+        // 2. RECEPCIÓN SEGURA Y ULTRA VELOZ
         if (Method.POST.equals(method)) {
             Map<String, String> files = new HashMap<>();
             try {
                 session.parseBody(files);
 
-                // Obtener nombre original del archivo
-                String fileName = session.getParms().get("file");
-                if (fileName == null || fileName.trim().isEmpty()) {
-                    fileName = "archivo_tv_" + System.currentTimeMillis();
-                }
-
                 Map<String, String> parms = session.getParms();
+                String rawName = parms.get("filename");
+                String fileName = (rawName != null) ? URLDecoder.decode(rawName, "UTF-8") : "archivo_" + System.currentTimeMillis();
+
                 int index = parms.containsKey("index") ? Integer.parseInt(parms.get("index")) : 1;
                 int total = parms.containsKey("total") ? Integer.parseInt(parms.get("total")) : 1;
 
-                if (files.containsKey("file")) {
-                    File tempFile = new File(files.get("file"));
+                if (!files.isEmpty()) {
+                    // Tomamos el archivo temporal generado
+                    String tempPath = files.values().iterator().next();
+                    File tempFile = new File(tempPath);
                     File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                     if (!downloadDir.exists()) downloadDir.mkdirs();
 
                     File destFile = new File(downloadDir, fileName);
 
-                    // Mover de forma instantánea si es posible, o copiar con buffer
+                    // Movimiento ultra rápido
                     if (!tempFile.renameTo(destFile)) {
                         copyFile(tempFile, destFile);
                         tempFile.delete();
