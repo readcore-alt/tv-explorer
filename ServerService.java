@@ -4,7 +4,9 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
 import androidx.core.app.NotificationCompat;
@@ -13,6 +15,7 @@ public class ServerService extends Service {
     private static final String CHANNEL_ID = "TV_File_Server_Channel";
     private FileServer server;
     public static boolean isRunning = false;
+    private WifiManager.WifiLock wifiLock;
 
     @Override
     public void onCreate() {
@@ -24,13 +27,21 @@ public class ServerService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (!isRunning) {
             try {
-                // 1. Redirigir la carpeta temporal a la memoria permitida de la app
+                // 1. BLINDAJE DE ANTENA: Forzar máxima potencia y cero ahorro de energía
+                try {
+                    WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                    if (wm != null) {
+                        wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "TVExplorer:HighPerfWifi");
+                        wifiLock.setReferenceCounted(false);
+                        wifiLock.acquire();
+                    }
+                } catch (Exception ignored) {}
+
+                // 2. Carpeta temporal interna segura
                 System.setProperty("java.io.tmpdir", getCacheDir().getAbsolutePath());
 
                 server = new FileServer(8080);
-
-                // 2. TIMEOUT 0 = INFINITO: Jamás se cortará la subida de archivos grandes
-                server.start(0, false);
+                server.start(0, false); // Timeout infinito (sin cortes)
                 isRunning = true;
 
                 String ip = NetworkUtils.getDeviceIpAddress(this);
@@ -55,6 +66,11 @@ public class ServerService extends Service {
         if (server != null) {
             server.stop();
             server = null;
+        }
+        // Liberar la antena cuando el usuario presiona "DETENER"
+        if (wifiLock != null && wifiLock.isHeld()) {
+            wifiLock.release();
+            wifiLock = null;
         }
         isRunning = false;
     }
