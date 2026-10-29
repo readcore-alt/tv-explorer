@@ -24,9 +24,13 @@ public class ServerService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (!isRunning) {
             try {
-                // Arrancamos el servidor en el puerto 8080
+                // 1. Redirigir la carpeta temporal a la memoria permitida de la app
+                System.setProperty("java.io.tmpdir", getCacheDir().getAbsolutePath());
+
                 server = new FileServer(8080);
-                server.start();
+
+                // 2. TIMEOUT 0 = INFINITO: Jamás se cortará la subida de archivos grandes
+                server.start(0, false);
                 isRunning = true;
 
                 String ip = NetworkUtils.getDeviceIpAddress(this);
