@@ -55,6 +55,9 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
     private List<File> currentFiles = new ArrayList<>();
     private FileAdapter fileAdapter;
 
+    // Guarda la posición seleccionada para no perder la sincronización al volver
+    private int selectedPosition = 0;
+
     private SharedPreferences prefs;
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -102,11 +105,10 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
         updateUI();
         applyPanelVisibility();
         if (currentDir != null) {
-            loadFiles(currentDir);
+            loadFiles(currentDir, false); // Mantiene la posición del archivo que estabas viendo
         }
     }
 
-    // AVISO EN PANTALLA EN TIEMPO REAL AL RECIBIR UN ARCHIVO
     @Override
     public void onFileReceived(String fileName, int index, int total) {
         mainHandler.post(() -> {
@@ -117,12 +119,10 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
             pbTransfer.setVisibility(View.VISIBLE);
             pbTransfer.setProgress(Math.round(((float) index / total) * 100));
 
-            // Refrescar lista de inmediato
             if (currentDir != null) {
-                loadFiles(currentDir);
+                loadFiles(currentDir, false);
             }
 
-            // Ocultar barra 3 segundos después del último archivo
             if (index == total) {
                 mainHandler.postDelayed(() -> {
                     pbTransfer.setVisibility(View.GONE);
@@ -142,11 +142,15 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
         fileAdapter = new FileAdapter();
         lvFiles.setAdapter(fileAdapter);
 
+        // Guarda en tiempo real qué archivo tienes seleccionado
         lvFiles.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                if (position >= 0 && position < currentFiles.size() && panelPreview.getVisibility() == View.VISIBLE) {
-                    updatePreviewPanel(currentFiles.get(position));
+                if (position >= 0 && position < currentFiles.size()) {
+                    selectedPosition = position;
+                    if (panelPreview.getVisibility() == View.VISIBLE) {
+                        updatePreviewPanel(currentFiles.get(position));
+                    }
                 }
             }
             @Override
@@ -157,8 +161,9 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
             if (position >= 0 && position < currentFiles.size()) {
                 File selected = currentFiles.get(position);
                 if (selected.isDirectory()) {
-                    loadFiles(selected);
+                    loadFiles(selected, true); // Al entrar a una carpeta nueva, va al inicio (índice 0)
                 } else {
+                    selectedPosition = position;
                     openFile(selected);
                 }
             }
@@ -173,7 +178,7 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
                         .setPositiveButton("Eliminar", (dialog, which) -> {
                             if (selected.delete()) {
                                 Toast.makeText(this, "Eliminado", Toast.LENGTH_SHORT).show();
-                                loadFiles(currentDir);
+                                loadFiles(currentDir, false);
                             }
                         })
                         .setNegativeButton("Cancelar", null)
@@ -427,12 +432,13 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
                 .setSingleChoiceItems(sortOptions, currentSort, (d, w) -> {
                     prefs.edit().putInt("sort_mode", w).apply();
                     d.dismiss();
-                    loadFiles(currentDir);
+                    loadFiles(currentDir, true);
                 })
                 .show();
     }
 
-    private void loadFiles(File dir) {
+    // loadFiles ahora sabe si debe ir al inicio (resetSelection = true) o mantener la posición
+    private void loadFiles(File dir, boolean resetSelection) {
         if (dir == null || !dir.exists() || !dir.canRead()) return;
         currentDir = dir;
         tvCurrentPath.setText("📁 " + currentDir.getAbsolutePath());
@@ -472,8 +478,16 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
         currentFiles = combined;
         fileAdapter.notifyDataSetChanged();
 
+        if (resetSelection) {
+            selectedPosition = 0;
+        } else if (selectedPosition >= currentFiles.size()) {
+            selectedPosition = Math.max(0, currentFiles.size() - 1);
+        }
+
+        // Sincroniza el panel derecho con el archivo exacto donde estás parado
         if (!currentFiles.isEmpty() && panelPreview.getVisibility() == View.VISIBLE) {
-            updatePreviewPanel(currentFiles.get(0));
+            updatePreviewPanel(currentFiles.get(selectedPosition));
+            lvFiles.setSelection(selectedPosition);
         }
     }
 
@@ -523,7 +537,7 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
                 File parent = currentDir.getParentFile();
                 String path = currentDir.getAbsolutePath();
                 if (parent != null && parent.canRead() && !path.equals("/storage/emulated/0") && !path.equals("/storage/emulated") && !path.equals("/")) {
-                    loadFiles(parent);
+                    loadFiles(parent, true); // Al subir de carpeta, inicia en el elemento 0
                     return true;
                 }
             }
