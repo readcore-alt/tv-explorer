@@ -6,59 +6,86 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <!-- BARRA SUPERIOR: Servidor + Botón Ajustes -->
+    <!-- BARRA SUPERIOR: Estado, IP, Botones y Progreso de Transferencia -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
         android:background="#1E1E1E"
+        android:orientation="vertical"
         android:padding="12dp"
         android:layout_marginBottom="10dp">
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/tvStatus"
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="SERVIDOR: APAGADO"
+                    android:textColor="#F44336"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvIpAddress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Presiona INICIAR para recibir archivos de PC"
+                    android:textColor="#AAAAAA"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btnToggleServer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="SERVIDOR: APAGADO"
-                android:textColor="#F44336"
-                android:textSize="15sp"
-                android:textStyle="bold" />
+                android:backgroundTint="#2196F3"
+                android:focusable="true"
+                android:text="INICIAR"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:layout_marginEnd="8dp" />
 
-            <TextView
-                android:id="@+id/tvIpAddress"
+            <Button
+                android:id="@+id/btnSettings"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Presiona INICIAR para recibir archivos de PC"
-                android:textColor="#AAAAAA"
-                android:textSize="13sp" />
+                android:backgroundTint="#333333"
+                android:focusable="true"
+                android:text="⚙️ AJUSTES"
+                android:textColor="#FFFFFF" />
         </LinearLayout>
 
-        <Button
-            android:id="@+id/btnToggleServer"
-            android:layout_width="wrap_content"
+        <!-- BARRA Y DETALLES DE RECEPCIÓN (Se muestran solo al recibir) -->
+        <TextView
+            android:id="@+id/tvTransferDetail"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:backgroundTint="#2196F3"
-            android:focusable="true"
-            android:text="INICIAR"
-            android:textColor="#FFFFFF"
+            android:textColor="#4CAF50"
+            android:textSize="12sp"
             android:textStyle="bold"
-            android:layout_marginEnd="8dp" />
+            android:visibility="gone"
+            android:layout_marginTop="6dp" />
 
-        <Button
-            android:id="@+id/btnSettings"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:backgroundTint="#333333"
-            android:focusable="true"
-            android:text="⚙️ AJUSTES"
-            android:textColor="#FFFFFF" />
+        <ProgressBar
+            android:id="@+id/pbTransfer"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="6dp"
+            android:max="100"
+            android:progressTint="#4CAF50"
+            android:visibility="gone"
+            android:layout_marginTop="4dp" />
     </LinearLayout>
 
     <TextView
@@ -71,14 +98,13 @@
         android:textStyle="bold"
         android:paddingBottom="6dp" />
 
-    <!-- CUERPO PRINCIPAL DIVIDIDO EN 2 (16:9 TV) -->
+    <!-- CUERPO DIVIDIDO (Lista y Vista Previa) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="horizontal">
 
-        <!-- LADO IZQUIERDO: Lista de archivos -->
         <ListView
             android:id="@+id/lvFiles"
             android:layout_width="0dp"
@@ -89,7 +115,6 @@
             android:dividerHeight="1dp"
             android:focusable="true" />
 
-        <!-- LADO DERECHO: Panel de Previsualización y Detalles -->
         <LinearLayout
             android:id="@+id/panelPreview"
             android:layout_width="0dp"
@@ -101,7 +126,6 @@
             android:padding="16dp"
             android:layout_marginStart="12dp">
 
-            <!-- Imagen / Miniatura -->
             <ImageView
                 android:id="@+id/ivPreview"
                 android:layout_width="match_parent"
@@ -110,7 +134,6 @@
                 android:src="@android:drawable/ic_menu_gallery"
                 android:layout_marginBottom="12dp" />
 
-            <!-- Nombre de archivo -->
             <TextView
                 android:id="@+id/tvPreviewName"
                 android:layout_width="match_parent"
@@ -122,7 +145,6 @@
                 android:gravity="center"
                 android:layout_marginBottom="8dp" />
 
-            <!-- Detalles (Peso, Fecha) -->
             <TextView
                 android:id="@+id/tvPreviewDetails"
                 android:layout_width="match_parent"
@@ -141,7 +163,6 @@
                 android:gravity="center"
                 android:layout_marginTop="20dp" />
         </LinearLayout>
-
     </LinearLayout>
 
 </LinearLayout>
