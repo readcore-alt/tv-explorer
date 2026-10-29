@@ -541,7 +541,7 @@ public class MainActivity extends AppCompatActivity implements FileServer.Transf
     }
 
     private boolean isImage(String n) { 
-        return n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png") || n.endsWith(".webp") || n.endsWith(".jfif"); 
+        return n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".png") || n.endsWith(".webp") || n.endsWith(".jfif") || n.endsWith(".gif"); 
     }
     private boolean isVideo(String n) { return n.endsWith(".mp4") || n.endsWith(".mkv") || n.endsWith(".webm") || n.endsWith(".avi"); }
     private boolean isAudio(String n) { return n.endsWith(".mp3") || n.endsWith(".wav") || n.endsWith(".aac"); }
