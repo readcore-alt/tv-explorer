@@ -4,6 +4,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.ThumbnailUtils;
@@ -52,11 +53,10 @@ public class MainActivity extends AppCompatActivity {
     private FileAdapter fileAdapter;
 
     private SharedPreferences prefs;
-    private Bitmap currentPreviewBitmap = null;
     private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    private long backPressedTime = 0; // Para evitar salir por accidente
+    private long backPressedTime = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,6 +76,7 @@ public class MainActivity extends AppCompatActivity {
         btnSettings = findViewById(R.id.btnSettings);
         lvFiles = findViewById(R.id.lvFiles);
 
+        // Permisos protegidos contra cierres
         checkStoragePermission();
 
         btnToggleServer.setOnClickListener(v -> toggleServer());
@@ -93,7 +94,9 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         updateUI();
         applyPanelVisibility();
-        loadFiles(currentDir);
+        if (currentDir != null) {
+            loadFiles(currentDir);
+        }
     }
 
     private void applyPanelVisibility() {
@@ -105,10 +108,11 @@ public class MainActivity extends AppCompatActivity {
         fileAdapter = new FileAdapter();
         lvFiles.setAdapter(fileAdapter);
 
+        // Control estricto de posición (>= 0) para evitar IndexOutOfBoundsException
         lvFiles.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                if (position < currentFiles.size() && panelPreview.getVisibility() == View.VISIBLE) {
+                if (position >= 0 && position < currentFiles.size() && panelPreview.getVisibility() == View.VISIBLE) {
                     updatePreviewPanel(currentFiles.get(position));
                 }
             }
@@ -117,7 +121,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         lvFiles.setOnItemClickListener((parent, view, position, id) -> {
-            if (position < currentFiles.size()) {
+            if (position >= 0 && position < currentFiles.size()) {
                 File selected = currentFiles.get(position);
                 if (selected.isDirectory()) {
                     loadFiles(selected);
@@ -128,7 +132,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         lvFiles.setOnItemLongClickListener((parent, view, position, id) -> {
-            if (position < currentFiles.size()) {
+            if (position >= 0 && position < currentFiles.size()) {
                 File selected = currentFiles.get(position);
                 new AlertDialog.Builder(this)
                         .setTitle("Eliminar")
@@ -146,7 +150,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // Fila con dos líneas de texto: Nombre arriba + Peso y Fecha abajo
     private class FileAdapter extends BaseAdapter {
 
         @Override
@@ -201,11 +204,12 @@ public class MainActivity extends AppCompatActivity {
                 tvSubtext = (TextView) textCol.getChildAt(1);
             }
 
+            if (position < 0 || position >= currentFiles.size()) return row;
+
             File file = currentFiles.get(position);
             String name = file.getName();
             tvName.setText(name);
 
-            // Subtexto directo en la lista (Peso y Fecha)
             String dateStr = new SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(new Date(file.lastModified()));
             if (file.isDirectory()) {
                 String[] ch = file.list();
@@ -258,7 +262,9 @@ public class MainActivity extends AppCompatActivity {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    // Actualización segura sin recycle() manual
     private void updatePreviewPanel(File file) {
+        if (file == null) return;
         tvPreviewName.setText(file.getName());
         String dateStr = new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(new Date(file.lastModified()));
 
@@ -275,21 +281,19 @@ public class MainActivity extends AppCompatActivity {
         tvPreviewDetails.setText(sizeText + "\n" + dateStr);
 
         String name = file.getName().toLowerCase();
-
-        if (currentPreviewBitmap != null && !currentPreviewBitmap.isRecycled()) {
-            currentPreviewBitmap.recycle();
-            currentPreviewBitmap = null;
-        }
+        String path = file.getAbsolutePath();
+        ivPreview.setTag(path);
 
         if (isImage(name)) {
             executor.execute(() -> {
                 Bitmap bmp = decodeSampledBitmap(file, 350, 350);
                 mainHandler.post(() -> {
-                    if (bmp != null) {
-                        currentPreviewBitmap = bmp;
-                        ivPreview.setImageBitmap(bmp);
-                    } else {
-                        ivPreview.setImageResource(android.R.drawable.ic_menu_gallery);
+                    if (path.equals(ivPreview.getTag())) {
+                        if (bmp != null) {
+                            ivPreview.setImageBitmap(bmp);
+                        } else {
+                            ivPreview.setImageResource(android.R.drawable.ic_menu_gallery);
+                        }
                     }
                 });
             });
@@ -297,11 +301,12 @@ public class MainActivity extends AppCompatActivity {
             executor.execute(() -> {
                 Bitmap bmp = ThumbnailUtils.createVideoThumbnail(file.getAbsolutePath(), MediaStore.Images.Thumbnails.MINI_KIND);
                 mainHandler.post(() -> {
-                    if (bmp != null) {
-                        currentPreviewBitmap = bmp;
-                        ivPreview.setImageBitmap(bmp);
-                    } else {
-                        ivPreview.setImageResource(android.R.drawable.ic_media_play);
+                    if (path.equals(ivPreview.getTag())) {
+                        if (bmp != null) {
+                            ivPreview.setImageBitmap(bmp);
+                        } else {
+                            ivPreview.setImageResource(android.R.drawable.ic_media_play);
+                        }
                     }
                 });
             });
@@ -339,7 +344,6 @@ public class MainActivity extends AppCompatActivity {
         return inSampleSize;
     }
 
-    // Diálogo de Ajustes completo: Miniaturas, Panel lateral y Ordenamiento
     private void showSettingsDialog() {
         String[] menuItems = {
             "Mostrar miniaturas en la lista",
@@ -404,12 +408,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadFiles(File dir) {
-        if (dir == null || !dir.exists()) return;
+        if (dir == null || !dir.exists() || !dir.canRead()) return;
         currentDir = dir;
         tvCurrentPath.setText("📁 " + currentDir.getAbsolutePath());
 
         File[] files = currentDir.listFiles();
-        currentFiles.clear();
+        List<File> combined = new ArrayList<>();
 
         if (files != null) {
             List<File> dirList = new ArrayList<>();
@@ -422,24 +426,28 @@ public class MainActivity extends AppCompatActivity {
             }
 
             int sortMode = prefs.getInt("sort_mode", 0);
-            if (sortMode == 0) { // Nombre
+            if (sortMode == 0) {
                 Collections.sort(dirList, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
                 Collections.sort(fileList, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
-            } else if (sortMode == 1) { // Fecha (Más recientes primero)
+            } else if (sortMode == 1) {
                 Collections.sort(dirList, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
                 Collections.sort(fileList, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
-            } else if (sortMode == 2) { // Tamaño (Más grandes primero)
+            } else if (sortMode == 2) {
                 Collections.sort(dirList, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
                 Collections.sort(fileList, (a, b) -> Long.compare(b.length(), a.length()));
-            } else if (sortMode == 3) { // Tipo de archivo
+            } else if (sortMode == 3) {
                 Collections.sort(dirList, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
                 Collections.sort(fileList, (a, b) -> getFileExtension(a).compareToIgnoreCase(getFileExtension(b)));
             }
 
-            currentFiles.addAll(dirList);
-            currentFiles.addAll(fileList);
+            combined.addAll(dirList);
+            combined.addAll(fileList);
         }
+
+        // Reemplazo atómico para evitar que getView lea una lista a medio borrar
+        currentFiles = combined;
         fileAdapter.notifyDataSetChanged();
+
         if (!currentFiles.isEmpty() && panelPreview.getVisibility() == View.VISIBLE) {
             updatePreviewPanel(currentFiles.get(0));
         }
@@ -452,6 +460,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void openFile(File file) {
+        if (file == null) return;
         String name = file.getName().toLowerCase();
         if (isApk(name)) {
             installApk(file);
@@ -483,18 +492,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // CONTROL INTELIGENTE DEL BOTÓN ATRÁS (Evita expulsiones accidentales)
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            File parent = currentDir.getParentFile();
-            // Si está dentro de una subcarpeta, sube de nivel
-            if (parent != null && parent.canRead() && !currentDir.getAbsolutePath().equals("/storage/emulated/0") && !currentDir.getAbsolutePath().equals("/storage/emulated")) {
-                loadFiles(parent);
-                return true;
+            if (currentDir != null) {
+                File parent = currentDir.getParentFile();
+                String path = currentDir.getAbsolutePath();
+                if (parent != null && parent.canRead() && !path.equals("/storage/emulated/0") && !path.equals("/storage/emulated") && !path.equals("/")) {
+                    loadFiles(parent);
+                    return true;
+                }
             }
 
-            // Si está en la carpeta raíz, exige pulsar dos veces para salir
             if (backPressedTime + 2000 > System.currentTimeMillis()) {
                 finish();
                 return true;
@@ -545,22 +554,36 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // Permisos totalmente blindados contra cuelgues
     private void checkStoragePermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-                intent.setData(Uri.parse("package:" + getPackageName()));
-                startActivity(intent);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (!Environment.isExternalStorageManager()) {
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                        intent.setData(Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                    } catch (Exception e1) {
+                        try {
+                            Intent fallback = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                            startActivity(fallback);
+                        } catch (Exception ignored) {}
+                    }
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{
+                            android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                            android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    }, 100);
+                }
             }
-        }
+        } catch (Exception ignored) {}
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (currentPreviewBitmap != null && !currentPreviewBitmap.isRecycled()) {
-            currentPreviewBitmap.recycle();
-        }
         executor.shutdown();
     }
 }
